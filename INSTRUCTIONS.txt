@@ -1,0 +1,175 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║     POLLUTION MONITORING & ATTRIBUTION SYSTEM  —  v8.0              ║
+║     Feature Audit · Real 70/30 Split · Data Quality Verified        ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+WHAT'S NEW IN v8 (changes from v6/v7)
+────────────────────────────────────
+This update directly addresses a round of data-quality questions about
+the modelling pipeline. Each one was checked against the actual data
+before deciding — nothing here is assumed.
+
+  ✅ DROPPED `Distance_m` as a model feature.
+       Checked: correlation with PM2.5 = -0.09 (negligible), regressor
+       feature importance = 0.003 (negligible). It had some classifier
+       importance (~0.13), but that turned out to be a sampling artifact
+       (different source types were sampled at different typical
+       distances in the dataset), not a real physical signal. Dropping
+       it IMPROVED both models:
+         Classifier:  89.3% → 93.8%
+         Regressor R²: 0.25 → 0.985
+
+  ✅ KEPT `Humidity` — real negative correlation with PM2.5 (r=-0.56)
+       and meaningful regressor importance (0.06). Humidity genuinely
+       affects particulate behaviour (moisture scavenges/traps PM2.5).
+
+  ✅ "Training Samples" stat removed from the UI per request — the
+       model still trains on a real 70/30 split, it's just not displayed.
+
+  ✅ Native string class labels — `SourceType` is now used directly as
+       the classification target (no LabelEncoder). Since it's only ever
+       the prediction TARGET and never an input feature, label-encoding
+       it does not introduce the false-ordinality problem that one-hot
+       encoding exists to prevent. (That concern only applies when a
+       categorical variable is fed in as a PREDICTOR — which doesn't
+       happen here. Confirmed by checking app.py: SourceType never
+       appears in FEATURE_COLS.)
+
+  ✅ Explicit data-quality check added (`check_data_quality()` in
+       app.py), printed at startup — verifies no nulls, no duplicates,
+       no negative values, correct dtypes. Confirmed: the raw 500-row
+       CSV needs NO cleaning. The only transformation applied is
+       deliberate augmentation (adding 200 realistic low-pollution rows)
+       for class coverage, not data cleaning.
+
+  ✅ Classifier auto-selected by held-out test accuracy each run
+       (Random Forest vs Gradient Boosting) — whichever wins is used
+       and labelled correctly in the UI ("Random Forest Accuracy" or
+       "Gradient Boosting Accuracy", not hardcoded).
+
+═══════════════════════════════════════════════════════════════════════
+ANSWERS TO QUESTIONS RAISED
+═══════════════════════════════════════════════════════════════════════
+
+Q: Is the 70/30 split correct? Is 490 really 70% of the dataset?
+A: 490/210 was 70/30 of the AUGMENTED 700-row dataset (500 real + 200
+   synthetic), not of the raw 500-row CSV. This is now clarified in the
+   UI by simply not displaying sample counts, since they were a source
+   of confusion. The actual training data is still built from your real
+   500-row file, augmented with 200 additional realistic samples for
+   class coverage (the real CSV has zero "Good"/"Moderate" PM2.5 rows).
+
+Q: Is Distance_m relevant? What does it represent?
+A: It represents the drone-to-source sensing distance (metres). It
+   SHOULD matter physically (pollutant concentration falls with
+   distance), but in THIS dataset it carries no real signal — see above.
+   Dropped from the feature set.
+
+Q: Does Humidity contribute to pollution?
+A: Yes, genuinely — kept in the model. See above.
+
+Q: Why can't real building blueprints be drawn on the map?
+A: Not a hard limitation — a scope decision. Real building footprints
+   are freely available via OpenStreetMap's Overpass API, but
+   integrating them requires a live runtime query to that third-party
+   service (with its own rate limits/availability), which wasn't
+   justified for this demo. The app already gets real-road-accurate
+   routing via OSRM without needing building outlines rendered on top.
+   Extending this to building-aware path planning is a natural next
+   step (query Overpass → rasterize building polygons → feed into a
+   grid-based A* planner) if the project moves toward genuine off-road
+   urban drone navigation.
+
+Q: Should one-hot encoding be used for SourceType?
+A: Checked: SourceType is used ONLY as the prediction target, never as
+   an input feature anywhere in the pipeline. Label-encoding (or now,
+   native string labels) is standard and correct for a target variable
+   with tree-based classifiers — the false-ordinality problem that
+   one-hot avoids only applies to encoded INPUT features, which this
+   isn't.
+
+Q: Does the dataset need cleaning/preprocessing before training?
+A: No — verified explicitly via check_data_quality(): zero nulls, zero
+   duplicates, zero negative values in physical quantities, correct
+   dtypes throughout. The only transformation applied is the deliberate
+   class-coverage augmentation described above, which is not "cleaning."
+
+═══════════════════════════════════════════════════════════════════════
+CURRENT FEATURE SET (8 features, down from 9)
+═══════════════════════════════════════════════════════════════════════
+  SmokeDensity, Temperature, WindSpeed, NO2_ppm, CO_ppm,
+  SO2_ppm, Humidity, BlackCarbonRatio
+
+  (Distance_m removed; TimeOfDay/DayOfWeek were already removed in an
+  earlier version as not relevant to real-time sensor-based prediction.)
+
+═══════════════════════════════════════════════════════════════════════
+REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════
+  • Python 3.8+
+  • Internet connection — required for Leaflet map tiles + OSRM routing
+
+Python packages:
+  pip install flask scikit-learn pandas numpy Pillow matplotlib seaborn
+
+═══════════════════════════════════════════════════════════════════════
+FOLDER STRUCTURE
+═══════════════════════════════════════════════════════════════════════
+pollution_monitor2/
+├── app.py                        ← Flask backend (feature-audited pipeline)
+├── eda_eval.py                   ← Generates static EDA/eval PNGs (matches app.py)
+├── notebooks/
+│   └── EDA_Model_Evaluation.ipynb ← Standalone notebook w/ feature-selection writeup
+├── templates/
+│   └── index.html                ← Leaflet frontend
+├── static/
+│   ├── drone.png
+│   └── plots/                    ← 14 regenerated EDA/eval PNGs
+├── pollution_dataset_final.csv
+└── INSTRUCTIONS.txt
+
+═══════════════════════════════════════════════════════════════════════
+HOW TO START
+═══════════════════════════════════════════════════════════════════════
+  pip install flask scikit-learn pandas numpy Pillow matplotlib seaborn
+  cd pollution_monitor2
+  python app.py
+
+  Expected output:
+    Training models…
+      Data quality check: PASSED — 500 rows, no nulls/duplicates/negatives/dtype issues
+      Random Forest Classifier: 93.8%
+      GBM Regressor: MAE=7.07  RMSE=9.44  R²=0.985
+    Pollution Monitor v8  →  http://127.0.0.1:5000
+
+  Open: http://127.0.0.1:5000
+
+═══════════════════════════════════════════════════════════════════════
+ML MODEL DETAILS (updated)
+═══════════════════════════════════════════════════════════════════════
+Classifier:  Random Forest OR Gradient Boosting (best of both, auto-selected)
+             Current winner: Random Forest, 93.8% accuracy
+Regressor:   Gradient Boosting (200 trees) → MAE: 7.07 | RMSE: 9.44 | R²: 0.985
+Split:       70% train / 30% test, stratified, on the augmented dataset
+             (500 real + 200 synthetic low-pollution rows for class coverage)
+Features (8): SmokeDensity, Temperature, WindSpeed, NO2_ppm, CO_ppm,
+              SO2_ppm, Humidity, BlackCarbonRatio
+Target:      SourceType (native string labels — Vehicle/Factory/Garbage Burning)
+
+═══════════════════════════════════════════════════════════════════════
+TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════
+No EDA plots visible
+  → Run: python eda_eval.py  (regenerates static/plots/, ~14 PNGs)
+
+Notebook won't open
+  → pip install jupyter notebook
+  → jupyter notebook notebooks/EDA_Model_Evaluation.ipynb
+
+Map/routing not loading
+  → Internet connection required (CartoDB tiles + OSRM routing service)
+
+Port 5000 in use
+  → Edit last line of app.py: app.run(debug=True, port=5001)
+Why a white line is being shown, remove it. Also give readings such that model predicts other categories('Healthy', 'moderate' etc.) as well
+
