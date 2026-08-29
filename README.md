@@ -1,1 +1,1 @@
-# Pollution-Attribution-System
+An end-to-end Python pipeline designed for environmental data analysis, PM2.5 concentration modeling, and predictive performance evaluation. This project automates exploratory data analysis (EDA), feature relationship studies, and model performance visualization. It analyzes air quality datasets with a primary focus on PM2.5 particulate matter levels. The repository includes automated tools to process raw data, generate distribution and outlier metrics, and evaluate machine learning models for air pollution classification and assessment.
